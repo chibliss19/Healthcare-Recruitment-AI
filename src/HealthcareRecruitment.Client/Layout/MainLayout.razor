@@ -1,0 +1,76 @@
+@inherits LayoutComponentBase
+@using HealthcareRecruitment.Client.Services
+@inject AuthService Auth
+@inject NavigationManager Nav
+@implements IDisposable
+
+<MudThemeProvider Theme="AppTheme.Theme" IsDarkMode="false" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+ 
+<MudLayout>
+    <MudAppBar Elevation="0" Class="px-6" Style="background-color: #ffffff; border-bottom: 1px solid #e2e8f0; color: #0f172a;">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start"
+                       OnClick="@ToggleDrawer" />
+        <MudText Typo="Typo.subtitle1" Style="font-weight: 700; letter-spacing: -0.025em;" Class="ml-2">Healthcare Vacancies in Northern Ireland</MudText>
+        <MudSpacer />
+        @if (Auth.IsAuthenticated)
+        {
+            <MudText Typo="Typo.body2" Class="mr-3 d-none d-sm-flex" Style="color: #64748b;">@Auth.FullName</MudText>
+            
+            <MudButton Variant="Variant.Text" Color="Color.Default" Href="profile" StartIcon="@Icons.Material.Filled.Person" Class="mr-2" Style="color: #475569;">
+                Profile
+            </MudButton>
+
+            <MudButton Variant="Variant.Text" Color="Color.Error" StartIcon="@Icons.Material.Filled.Logout"
+                       OnClick="@LogoutAsync">
+                Log out
+            </MudButton>
+        }
+    </MudAppBar>
+
+    <MudDrawer @bind-Open="_drawerOpen" Elevation="0" ClipMode="DrawerClipMode.Always" Style="background-color: #f8fafc; border-right: 1px solid #e2e8f0;">
+        <div class="pa-4">
+            <MudText Typo="Typo.caption" Style="font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;" Class="px-3 mb-2 d-block">Menu</MudText>
+            <MudNavMenu>
+                <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard" Class="rounded-lg mb-1">Job Dashboard</MudNavLink>
+                <MudNavLink Href="ai-assistant" Icon="@Icons.Material.Filled.SmartToy" Class="rounded-lg mb-1">AI Career Assistant</MudNavLink>
+                <MudNavLink Href="bookmarks" Icon="@Icons.Material.Filled.Bookmark" Class="rounded-lg mb-1">Bookmarks</MudNavLink>
+                @if (Auth.IsAuthenticated)
+                {
+                    <MudNavLink Href="applications" Icon="@Icons.Material.Filled.Assignment" Class="rounded-lg mb-1">My Applications</MudNavLink>
+                    <MudNavLink Href="profile" Icon="@Icons.Material.Filled.Person" Class="rounded-lg mb-1">My Profile</MudNavLink>
+                }
+            </MudNavMenu>
+        </div>
+    </MudDrawer>
+
+    <MudMainContent Style="background-color: #f8fafc; min-height: 100vh;">
+        <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="pa-6 pa-md-8">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private bool _drawerOpen = true;
+
+    protected override void OnInitialized()
+    {
+        Auth.Changed += StateHasChanged;
+    }
+
+    private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+
+    private async Task LogoutAsync()
+    {
+        await Auth.LogoutAsync();
+        Nav.NavigateTo("login", forceLoad: true);
+    }
+
+    public void Dispose()
+    {
+        Auth.Changed -= StateHasChanged;
+    }
+}

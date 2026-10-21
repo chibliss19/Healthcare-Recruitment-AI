@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="HealthcareRecruitment.Api/HealthcareRecruitment.Api.csproj" />
+  <Project Path="HealthcareRecruitment.Client/HealthcareRecruitment.Client.csproj" />
+  <Project Path="HealthcareRecruitment.Core/HealthcareRecruitment.Core.csproj" />
+  <Project Path="HealthcareRecruitment.Tests/HealthcareRecruitment.Tests.csproj" />
+</Solution>

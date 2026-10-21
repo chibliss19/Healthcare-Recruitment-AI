@@ -1,0 +1,674 @@
+@page "/ai-assistant"
+@using HealthcareRecruitment.Client.Services
+@using HealthcareRecruitment.Core.Models
+@using Microsoft.AspNetCore.Components.Forms
+@using System.Net.Http.Json
+@inject AiAssistantService Assistant
+@inject AuthService Auth
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<PageTitle>AI Career Assistant - Healthcare Vacancies in Northern Ireland</PageTitle>
+
+<div class="mb-8">
+    <MudText Typo="Typo.h4" Style="font-weight: 800; color: #0f172a; letter-spacing: -0.025em;" Class="mb-1">
+        AI Career Assistant
+    </MudText>
+    <MudText Typo="Typo.body1" Style="color: #64748b;">
+        Personalized resume evaluation, intelligent job matching, and automated interview preparation.
+    </MudText>
+</div>
+
+@if (!Auth.IsAuthenticated)
+{
+    <MudAlert Severity="Severity.Info" Class="rounded-xl">
+        <MudLink Href="login?returnUrl=/ai-assistant" Style="font-weight: 600;">Log in</MudLink> to use the AI assistant — it's personalized to your account.
+    </MudAlert>
+}
+else
+{
+    <MudGrid Spacing="4">
+        <!-- History Sidebar Panel -->
+        <MudItem xs="12" md="4">
+            <MudPaper Elevation="0" Class="pa-4 rounded-xl" Style="background: #ffffff; border: 1px solid #e2e8f0; height: calc(100vh - 220px); display: flex; flex-direction: column;">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                           StartIcon="@Icons.Material.Filled.Add" Class="mb-4 py-2 rounded-lg"
+                           Style="background-color: #2563eb; text-transform: none; font-weight: 600;"
+                           OnClick="@StartNew">
+                    New session
+                </MudButton>
+                
+                <MudText Typo="Typo.subtitle2" Style="font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em;" Class="mb-3 px-1">
+                    History
+                </MudText>
+                
+                <div class="flex-grow-1 overflow-y-auto pr-1">
+                    @if (_sessions.Count == 0)
+                    {
+                        <div class="pa-4 text-center">
+                            <MudText Typo="Typo.body2" Style="color: #94a3b8;">No past sessions yet.</MudText>
+                        </div>
+                    }
+                    else
+                    {
+                        <MudList T="int" Dense="true" Class="pa-0">
+                            @foreach (var s in _sessions.OrderByDescending(x => x.IsPinned).ThenByDescending(x => x.UpdatedAt))
+                            {
+                                <div class="rounded-lg mb-2" 
+                                   style="@(s.Id == _activeSession?.Id ? "background-color: #f1f5f9; border: 1px solid #cbd5e1;" : "background-color: #f8fafc; border: 1px solid #f1f5f9;") cursor: pointer; transition: all 0.2s;"
+                                   @onclick="@(() => OpenSessionAsync(s.Id))">
+                                    <div class="pa-3 d-flex justify-space-between align-start">
+                                        <div style="overflow: hidden; padding-right: 4px;">
+                                            <MudText Typo="Typo.body2" Style="font-weight: 500; color: #1e293b; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
+                                                @if (s.IsPinned)
+                                                {
+                                                    <MudIcon Icon="@Icons.Material.Filled.PushPin" Size="Size.Small" Class="mr-1" Style="font-size: 14px; color: #2563eb; transform: rotate(45deg);" />
+                                                }
+                                                @s.Preview
+                                            </MudText>
+                                            <MudText Typo="Typo.caption" Style="color: #64748b;" Class="mt-1 d-block">@s.UpdatedAt.ToLocalTime().ToString("d MMM, HH:mm")</MudText>
+                                        </div>
+
+                                        <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Dense="true"
+                                                 AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight"
+                                                 @onclick:stopPropagation="true">
+                                            <MudMenuItem OnClick="@(() => TogglePinAsync(s))">
+                                                <MudIcon Icon="@(s.IsPinned ? Icons.Material.Filled.PushPin : Icons.Material.Outlined.PushPin)" Size="Size.Small" Class="mr-2" />
+                                                @(s.IsPinned ? "Unpin" : "Pin")
+                                            </MudMenuItem>
+                                            <MudMenuItem OnClick="@(() => DeleteSessionAsync(s.Id))">
+                                                <MudIcon Icon="@Icons.Material.Outlined.Delete" Size="Size.Small" Class="mr-2" Color="Color.Error" />
+                                                <MudText Color="Color.Error">Delete</MudText>
+                                            </MudMenuItem>
+                                        </MudMenu>
+                                    </div>
+                                </div>
+                            }
+                        </MudList>
+                    }
+                </div>
+            </MudPaper>
+        </MudItem>
+
+        <!-- Main Workspace Panel -->
+        <MudItem xs="12" md="8">
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-4 rounded-lg">@_error</MudAlert>
+            }
+
+            @if (_busy)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-4 rounded" />
+            }
+
+            <MudPaper Elevation="0" Class="rounded-xl" Style="background: #ffffff; border: 1px solid #e2e8f0; overflow: hidden;">
+                <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-6">
+                    
+                    <!-- Profile & Personalization Tab -->
+                    <MudTabPanel Text="Profile & Personalization">
+                        @if (_activeSession is null)
+                        {
+                            <div class="mb-6">
+                                <MudText Typo="Typo.h6" Style="font-weight: 700; color: #0f172a;" Class="mb-1">Step 1: Personalize Your Career Profile</MudText>
+                                <MudText Typo="Typo.body2" Style="color: #64748b;">
+                                    Provide your background to help the AI precisely tailor healthcare job matching across Northern Ireland.
+                                </MudText>
+                            </div>
+
+                            <MudPaper Elevation="0" Class="pa-5 mb-6 rounded-xl" Style="background-color: #f8fafc; border: 1px solid #e2e8f0;">
+                                <!-- Personal Info Grid: Full Name, Gender, Marital Status -->
+                                <MudGrid Spacing="3" Class="mb-3">
+                                    <MudItem xs="12" sm="4">
+                                        <MudTextField @bind-Value="_fullName" Label="Full Name" 
+                                                      Placeholder="E.g., John Doe" 
+                                                      Variant="Variant.Outlined" Style="background-color: #ffffff;" />
+                                    </MudItem>
+                                    <MudItem xs="12" sm="4">
+                                        <MudSelect T="string" Label="Gender" @bind-Value="_gender" 
+                                                   Variant="Variant.Outlined" Style="background-color: #ffffff;" Clearable="true">
+                                            <MudSelectItem T="string" Value="@("Female")">Female</MudSelectItem>
+                                            <MudSelectItem T="string" Value="@("Male")">Male</MudSelectItem>
+                                            <MudSelectItem T="string" Value="@("Other")">Other</MudSelectItem>
+                                            <MudSelectItem T="string" Value="@("Prefer not to say")">Prefer not to say</MudSelectItem>
+                                        </MudSelect>
+                                    </MudItem>
+                                    <MudItem xs="12" sm="4">
+                                        <MudSelect T="string" Label="Marital Status" @bind-Value="_maritalStatus" 
+                                                   Variant="Variant.Outlined" Style="background-color: #ffffff;" Clearable="true">
+                                            <MudSelectItem T="string" Value="@("Single")">Single</MudSelectItem>
+                                            <MudSelectItem T="string" Value="@("Married")">Married</MudSelectItem>
+                                            <MudSelectItem T="string" Value="@("Divorced")">Divorced</MudSelectItem>
+                                            <MudSelectItem T="string" Value="@("Widowed")">Widowed</MudSelectItem>
+                                            <MudSelectItem T="string" Value="@("Prefer not to say")">Prefer not to say</MudSelectItem>
+                                        </MudSelect>
+                                    </MudItem>
+                                </MudGrid>
+
+                                <MudTextField @bind-Value="_personalBio" Label="Tell me more about yourself"
+                                              Placeholder="E.g., Passionate healthcare professional specializing in elderly care, seeking stable shifts... and Job prefrences"
+                                              Variant="Variant.Outlined" Lines="3" Class="mb-4" Style="background-color: #ffffff;" />
+
+                                <MudTextField @bind-Value="_skills" Label="Healthcare related skills"
+                                              Placeholder="E.g., Wound care, patient assessment, medication administration"
+                                              Variant="Variant.Outlined" Lines="2" Class="mb-4" Style="background-color: #ffffff;" />
+
+                                <MudTextField @bind-Value="_certifications" Label="Healthcare related certification / qualification"
+                                              Placeholder="E.g., BSc Nursing, NMC registered, NVQ Level 3 Health and Social Care"
+                                              Variant="Variant.Outlined" Lines="2" Class="mb-4" Style="background-color: #ffffff;" />
+
+                                <MudGrid Spacing="3">
+                                    <MudItem xs="12" sm="6">
+                                        <MudNumericField @bind-Value="_yearsOfExperience" Label="Years of experience"
+                                                         Variant="Variant.Outlined" Min="0" Max="40" Style="background-color: #ffffff;" />
+                                    </MudItem>
+                                    <MudItem xs="12" sm="6">
+                                        <MudNumericField @bind-Value="_minHourlySalary" Label="Min salary expectation (£ / hour) min wage: £12.71"
+                                                         Variant="Variant.Outlined" Min="0.0m" Step="0.5m" Style="background-color: #ffffff;" />
+                                    </MudItem>
+                                </MudGrid>
+
+                                <div class="mt-4">
+                                    <MudSelect T="string" Label="Preferred Locations in Northern Ireland" 
+                                               MultiSelection="true" 
+                                               @bind-SelectedValues="_selectedLocations" 
+                                               Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter"
+                                               Clearable="true" Style="background-color: #ffffff;">
+                                        @foreach (var location in _availableLocations)
+                                        {
+                                            <MudSelectItem T="string" Value="@location">@location</MudSelectItem>
+                                        }
+                                    </MudSelect>
+                                </div>
+                            </MudPaper>
+
+                            <div class="mb-6">
+                                <MudText Typo="Typo.subtitle1" Style="font-weight: 700; color: #0f172a;" Class="mb-1">Step 2: Upload Your CV & Generate</MudText>
+                                <MudText Typo="Typo.body2" Style="color: #64748b;" Class="mb-3">Upload your PDF or Word resume, then click generate to start your analysis.</MudText>
+                                
+                                <div class="pa-4 rounded-xl d-flex flex-column align-center justify-center" style="border: 2px dashed #cbd5e1; background-color: #f8fafc;">
+                                    <InputFile OnChange="OnFileSelectedAsync" accept=".pdf,.docx" disabled="@_busy" class="mb-2" />
+                                    @if (_selectedFile is not null)
+                                    {
+                                        <MudText Typo="Typo.body2" Style="font-weight: 600; color: #2563eb;" Class="mt-2">
+                                            Selected: @_selectedFile.Name
+                                        </MudText>
+                                    }
+                                </div>
+                            </div>
+
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                                       Disabled="@(_selectedFile is null || _busy)"
+                                       OnClick="@GenerateAnalysisAsync"
+                                       Class="py-3 rounded-lg" Style="background-color: #2563eb; text-transform: none; font-weight: 600; font-size: 1rem;">
+                                @(_busy ? "Analyzing Profile & Matching Jobs..." : "Generate AI Career Analysis")
+                            </MudButton>
+                        }
+                        else
+                        {
+                            var resume = _activeSession.ResumeSummary;
+                            <div class="d-flex justify-space-between align-center mb-4">
+                                <MudText Typo="Typo.h6" Style="font-weight: 700; color: #0f172a;">AI Career Analysis Results</MudText>
+                                <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" OnClick="@StartNew" Class="rounded-lg">
+                                    Start New Session
+                                </MudButton>
+                            </div>
+
+                            <MudPaper Elevation="0" Class="pa-5 mb-6 rounded-xl" Style="background-color: #f8fafc; border: 1px solid #e2e8f0;">
+                                <MudText Typo="Typo.subtitle2" Style="font-weight: 700; color: #1e293b;" Class="mb-2">Profile Summary</MudText>
+                                <MudText Typo="Typo.body2" Style="color: #475569;" Class="mb-4">@resume.Summary</MudText>
+                                
+                                <div class="d-flex flex-wrap gap-1.5 mb-4">
+                                    @foreach (var skill in resume.Skills)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">@skill</MudChip>
+                                    }
+                                </div>
+
+                                <MudList T="string" Dense="true" Class="pa-0">
+                                    @foreach (var highlight in resume.Highlights)
+                                    {
+                                        <MudListItem T="string" Icon="@Icons.Material.Filled.CheckCircle" IconColor="Color.Success">@highlight</MudListItem>
+                                    }
+                                </MudList>
+                            </MudPaper>
+
+                            <div class="d-flex justify-space-between align-center mb-4">
+                                <div>
+                                    <MudText Typo="Typo.h6" Style="font-weight: 700; color: #0f172a;" Class="mb-1">Recommended Vacancies</MudText>
+                                    <MudText Typo="Typo.body2" Style="color: #64748b;">@_activeSession.Recommendations.Summary</MudText>
+                                </div>
+                                <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" OnClick="@RefreshRecommendationsAsync" Disabled="_refreshingRecommendations" Class="rounded-lg">
+                                    @(_refreshingRecommendations ? "Refreshing..." : "Re-evaluate Matches")
+                                </MudButton>
+                            </div>
+
+                            @if (_activeSession.Recommendations.Matches.Count == 0)
+                            {
+                                <MudAlert Severity="Severity.Warning" Class="rounded-xl">No current vacancy is a good fit for this profile right now.</MudAlert>
+                            }
+                            else
+                            {
+                                @foreach (var match in _activeSession.Recommendations.Matches.Where(m => m.Vacancy is not null))
+                                {
+                                    var vacancy = match.Vacancy!;
+                                    var prep = _activeSession.InterviewPreps.FirstOrDefault(p => p.VacancyId == vacancy.Id);
+                                    
+                                    <MudPaper Elevation="0" Class="pa-5 mb-4 rounded-xl" Style="background: #ffffff; border: 1px solid #e2e8f0;">
+                                        <div class="d-flex justify-space-between align-start mb-2">
+                                            <MudText Typo="Typo.subtitle1" Style="font-weight: 700; color: #0f172a;">@vacancy.Title</MudText>
+                                            <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Filled">@match.MatchScore% match</MudChip>
+                                        </div>
+                                        <MudText Typo="Typo.body2" Style="color: #2563eb; font-weight: 600;" Class="mb-2">@vacancy.Employer</MudText>
+                                        <MudText Typo="Typo.body2" Style="color: #475569;" Class="mb-4">@match.Reason</MudText>
+
+                                        <div class="d-flex gap-2 flex-wrap">
+                                            @if (prep is null)
+                                            {
+                                                <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                                                           StartIcon="@Icons.Material.Filled.RecordVoiceOver"
+                                                           Disabled="@(_preppingVacancyId.HasValue)"
+                                                           OnClick="@(() => GenerateInterviewPrepAsync(vacancy.Id))"
+                                                           Class="rounded-lg" Style="background-color: #2563eb; text-transform: none;">
+                                                    @(_preppingVacancyId == vacancy.Id ? "Preparing..." : "Generate Interview Prep")
+                                                </MudButton>
+                                            }
+                                            
+                                            <!-- Generate Cover Letter Button -->
+                                            <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
+                                                       StartIcon="@Icons.Material.Filled.Description"
+                                                       Disabled="@(_statementLoadingJobId == vacancy.Id)"
+                                                       OnClick="@(() => GenerateStatementAsync(vacancy.Id))"
+                                                       Class="rounded-lg" Style="text-transform: none;">
+                                                @(_statementLoadingJobId == vacancy.Id ? "Drafting..." : "Generate Cover Letter")
+                                            </MudButton>
+                                            
+                                            <MudButton Size="Size.Small" Variant="Variant.Outlined" Href="@($"apply/{vacancy.Id}")" Class="rounded-lg">View & Apply</MudButton>
+                                        </div>
+
+                                        <!-- Display Area for Generated Cover Letter -->
+                                        @if (_activeStatementJobId == vacancy.Id && !string.IsNullOrEmpty(_generatedStatement))
+                                        {
+                                            <MudPaper Elevation="0" Class="pa-4 mt-4 rounded-lg" Style="background-color: #f1f5f9; border: 1px solid #cbd5e1;">
+                                                <div class="d-flex justify-space-between align-center mb-2 pb-2 border-b">
+                                                    <MudText Typo="Typo.subtitle2" Style="font-weight: 700; color: #0f172a;">
+                                                        <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Size="Size.Small" Class="mr-1" Style="color: #2563eb;" />
+                                                        Tailored Application Prose
+                                                    </MudText>
+                                                    
+                                                    <MudButton Size="Size.Small" StartIcon="@_copyIcon" OnClick="@(() => CopyToClipboard(_generatedStatement))" Variant="Variant.Text" Color="Color.Dark">
+                                                        @_copyButtonText
+                                                    </MudButton>
+                                                </div>
+                                                <MudText Typo="Typo.body2" Style="white-space: pre-line; color: #333438;">
+                                                    @_generatedStatement
+                                                </MudText>
+                                            </MudPaper>
+                                        }
+
+                                        <!-- Existing Interview Prep Display -->
+                                        @if (prep is not null)
+                                        {
+                                            <div class="mt-4 pt-4" style="border-top: 1px solid #e2e8f0;">
+                                                <MudText Typo="Typo.subtitle2" Style="font-weight: 700; color: #0f172a;" Class="mb-3">Interview Preparation Guide</MudText>
+                                                @foreach (var q in prep.Questions)
+                                                {
+                                                    <div class="mb-3 pa-3 rounded-lg" style="background-color: #f8fafc; border: 1px solid #e2e8f0;">
+                                                        <MudChip T="string" Size="Size.Small" Color="@(q.Category == QuestionCategory.Technical ? Color.Info : Color.Default)" Class="mb-1">
+                                                            @q.Category
+                                                        </MudChip>
+                                                        <MudText Typo="Typo.body2" Style="font-weight: 600; color: #1e293b;" Class="mb-1">@q.Question</MudText>
+                                                        <MudText Typo="Typo.body2" Style="color: #64748b;">@q.SuggestedAnswerAngle</MudText>
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                    </MudPaper>
+                                }
+                            }
+                        }
+                    </MudTabPanel>
+
+                    <!-- Chat Tab -->
+                    <MudTabPanel Text="Interactive Chat">
+                        @if (_activeSession is null)
+                        {
+                            <div class="pa-8 text-center">
+                                <MudText Typo="Typo.body1" Style="color: #64748b;">Complete your profile and generate your analysis on the first tab to start chatting with your AI assistant.</MudText>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="d-flex flex-column" style="height: calc(100vh - 350px);">
+                                <div class="flex-grow-1 overflow-y-auto pr-2 mb-4">
+                                    @if (_activeSession.ChatTurns.Count == 0)
+                                    {
+                                        <div class="pa-6 text-center">
+                                            <MudText Typo="Typo.body2" Style="color: #64748b;">Ask anything about your recommended jobs, skill gaps, or interview preparation.</MudText>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var turn in _activeSession.ChatTurns)
+                                        {
+                                            <div class="mb-4 d-flex @(turn.Role == ChatRole.User ? "justify-end" : "justify-start")">
+                                                <div class="pa-3 rounded-xl" style="max-width: 80%; background-color: @(turn.Role == ChatRole.User ? "#2563eb" : "#f1f5f9"); color: @(turn.Role == ChatRole.User ? "#ffffff" : "#000000");">
+                                                    <MudText Typo="Typo.caption" Style="font-weight: 700; opacity: 0.8;" Class="mb-1 d-block">
+                                                        @(turn.Role == ChatRole.User ? "You" : "AI Career Assistant")
+                                                    </MudText>
+                                                    <MudText Typo="Typo.body2">@turn.Content</MudText>
+                                                </div>
+                                            </div>
+                                        }
+                                    }
+                                </div>
+
+                                @if (_chatError is not null)
+                                {
+                                    <MudAlert Severity="Severity.Error" Class="mb-3 rounded-lg" Dense="true">@_chatError</MudAlert>
+                                }
+
+                                <div class="d-flex gap-2">
+                                    <MudTextField T="string" @bind-Value="_chatInput" Placeholder="Ask about any recommended job or interview strategy..."
+                                                  Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
+                                                  Disabled="@_chatBusy" OnKeyUp="@OnChatKeyUp" Style="background-color: #f8fafc;" />
+                                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(_chatBusy || string.IsNullOrWhiteSpace(_chatInput))" OnClick="@SendMessageAsync"
+                                               Class="px-6 rounded-lg" Style="background-color: #2563eb; text-transform: none; font-weight: 600;">
+                                        @(_chatBusy ? "..." : "Send")
+                                    </MudButton>
+                                </div>
+                            </div>
+                        }
+                    </MudTabPanel>
+                </MudTabs>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private List<AiSessionSummary> _sessions = [];
+    private AiSessionDetail? _activeSession;
+    private bool _busy;
+    private string? _error;
+    private int? _preppingVacancyId;
+    private string _chatInput = "";
+    private bool _chatBusy;
+    private string? _chatError;
+    private bool _refreshingRecommendations;
+
+    // Statement Generator UI State
+    private int? _statementLoadingJobId;
+    private int? _activeStatementJobId;
+    private string? _generatedStatement;
+    private string _copyButtonText = "Copy";
+    private string _copyIcon = Icons.Material.Filled.ContentCopy;
+
+    // Personalization Profile Fields
+    private string _fullName = "";
+    private string _gender = "";
+    private string _maritalStatus = "";
+    private string _personalBio = "";
+    private string _skills = "";
+    private string _certifications = "";
+    private int _yearsOfExperience = 0;
+    private decimal _minHourlySalary = 0.00m;
+
+    private IReadOnlyCollection<string> _selectedLocations = new HashSet<string>();
+    private IBrowserFile? _selectedFile;
+
+    private readonly List<string> _availableLocations = new()
+    {
+        "County Antrim", "County Armagh", "County Down", 
+        "County Fermanagh", "County Londonderry", "County Tyrone",
+        "Belfast", "Derry/Londonderry", "Lisburn", "Newry", "Armagh", 
+        "Bangor", "Coleraine", "Enniskillen", "Omagh", "Strabane", 
+        "Antrim", "Ballymena", "Larne", "Newtownards", "Downpatrick", 
+        "Portadown", "Lurgan", "Cookstown", "Dungannon", "Magherafelt"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Auth.IsAuthenticated) return;
+        _sessions = await Assistant.ListSessionsAsync();
+    }
+
+    private void StartNew()
+    {
+        _activeSession = null;
+        _error = null;
+        _chatError = null;
+        _chatInput = "";
+        _fullName = "";
+        _gender = "";
+        _maritalStatus = "";
+        _personalBio = "";
+        _skills = "";
+        _certifications = "";
+        _yearsOfExperience = 0;
+        _minHourlySalary = 0.00m;
+        _selectedFile = null;
+        _selectedLocations = new HashSet<string>();
+        _generatedStatement = null;
+    }
+
+    private async Task OpenSessionAsync(int sessionId)
+    {
+        _busy = true;
+        _error = null;
+        StateHasChanged();
+
+        var detail = await Assistant.GetSessionAsync(sessionId);
+        if (detail is not null)
+        {
+            _activeSession = detail;
+        }
+        else
+        {
+            _error = "Couldn't load that session.";
+        }
+
+        _busy = false;
+    }
+
+    private void OnFileSelectedAsync(InputFileChangeEventArgs e)
+    {
+        _selectedFile = e.File;
+        _error = null;
+    }
+
+    private async Task GenerateAnalysisAsync()
+    {
+        if (_selectedFile is null || _busy) return;
+
+        _error = null;
+        _busy = true;
+        StateHasChanged();
+
+        var (success, error, result) = await Assistant.UploadResumeAndCreateSessionAsync(
+            _selectedFile, 
+            _personalBio, 
+            _skills, 
+            _certifications, 
+            _yearsOfExperience, 
+            _minHourlySalary, 
+            _selectedLocations.ToList(),
+            _fullName,
+            _gender,
+            _maritalStatus);
+
+        if (success && result is not null)
+        {
+            _activeSession = result;
+            _sessions.Insert(0, new AiSessionSummary
+            {
+                Id = result.Id,
+                CreatedAt = result.CreatedAt,
+                UpdatedAt = result.CreatedAt,
+                Preview = result.ResumeSummary.Summary.Length > 100 ? result.ResumeSummary.Summary[..100] + "…" : result.ResumeSummary.Summary,
+            });
+        }
+        else
+        {
+            _error = error ?? "Couldn't process that resume. Please try a different file.";
+        }
+
+        _busy = false;
+    }
+
+    private async Task RefreshRecommendationsAsync()
+    {
+        if (_activeSession is null || _refreshingRecommendations) return;
+
+        _refreshingRecommendations = true;
+        _error = null;
+        StateHasChanged();
+
+        var (success, error, newRecommendations) = await Assistant.ReEvaluateSessionAsync(_activeSession.Id);
+        if (success && newRecommendations is not null)
+        {
+            _activeSession.Recommendations = newRecommendations;
+        }
+        else
+        {
+            _error = error ?? "Failed to re-evaluate matches.";
+        }
+
+        _refreshingRecommendations = false;
+        StateHasChanged();
+    }
+
+    private async Task GenerateInterviewPrepAsync(int vacancyId)
+    {
+        _error = null;
+        _preppingVacancyId = vacancyId;
+        StateHasChanged();
+
+        var (success, error, result) = await Assistant.GetInterviewPrepAsync(_activeSession!.Id, vacancyId);
+        if (success && result is not null)
+        {
+            _activeSession.InterviewPreps.Add(result);
+        }
+        else
+        {
+            _error = error ?? "Couldn't generate interview prep for that role.";
+        }
+
+        _preppingVacancyId = null;
+    }
+
+    private async Task GenerateStatementAsync(int vacancyId)
+    {
+        _statementLoadingJobId = vacancyId;
+        _generatedStatement = null; 
+        _error = null;
+
+        _copyButtonText = "Copy";
+        _copyIcon = Icons.Material.Filled.ContentCopy;
+
+        StateHasChanged();
+
+        try
+        {
+            var (success, error, statement) = await Assistant.GenerateStatementAsync(vacancyId);
+
+            if (success && !string.IsNullOrWhiteSpace(statement))
+            {
+                _generatedStatement = statement;
+                _activeStatementJobId = vacancyId;
+            }
+            else
+            {
+                _error = error ?? "API Error: Unable to generate cover letter. Please try again.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Exception during statement generation: {ex.Message}";
+        }
+        finally
+        {
+            _statementLoadingJobId = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CopyToClipboard(string text)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+
+            _copyButtonText = "Copied!";
+            _copyIcon = Icons.Material.Filled.Check;
+            StateHasChanged();
+
+            await Task.Delay(2000);
+            _copyButtonText = "Copy";
+            _copyIcon = Icons.Material.Filled.ContentCopy;
+            StateHasChanged();
+        }
+        catch
+        {
+            _error = "Clipboard access was denied by the browser.";
+            StateHasChanged();
+        }
+    }
+
+    private void OnChatKeyUp(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") _ = SendMessageAsync();
+    }
+
+    private async Task SendMessageAsync()
+    {
+        var message = _chatInput.Trim();
+        if (string.IsNullOrWhiteSpace(message) || _chatBusy || _activeSession is null) return;
+
+        _chatError = null;
+        _chatBusy = true;
+        _chatInput = "";
+        var sessionId = _activeSession.Id;
+        _activeSession.ChatTurns.Add(new InterviewChatMessage { Role = ChatRole.User, Content = message });
+        StateHasChanged();
+
+        try
+        {
+            var (success, error, reply) = await Assistant.SendMessageAsync(sessionId, message);
+            if (success && reply is not null)
+            {
+                _activeSession.ChatTurns.Add(new InterviewChatMessage { Role = ChatRole.Assistant, Content = reply });
+                var summary = _sessions.FirstOrDefault(s => s.Id == sessionId);
+                if (summary is not null) summary.UpdatedAt = DateTime.UtcNow;
+            }
+            else
+            {
+                _chatError = error ?? "Couldn't get a response. Please try again.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _chatError = $"Something went wrong sending that message: {ex.Message}. Please try again.";
+        }
+        finally
+        {
+            _chatBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task TogglePinAsync(AiSessionSummary session)
+    {
+        session.IsPinned = !session.IsPinned;
+        StateHasChanged();
+        await Assistant.ToggleSessionPinAsync(session.Id);
+    }
+
+    private async Task DeleteSessionAsync(int sessionId)
+    {
+        _sessions.RemoveAll(s => s.Id == sessionId);
+        if (_activeSession?.Id == sessionId) StartNew();
+        StateHasChanged();
+        await Assistant.DeleteSessionAsync(sessionId);
+    }
+}

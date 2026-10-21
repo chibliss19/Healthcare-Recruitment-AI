@@ -1,0 +1,205 @@
+@attribute [Authorize]
+@page "/"
+@using HealthcareRecruitment.Client.Components
+@using HealthcareRecruitment.Client.Services
+@inject HttpClient Http
+@inject BookmarkService Bookmarks
+@inject SavedJobsService SavedJobs
+@inject AuthService Auth
+
+<PageTitle>Job Dashboard - Healthcare Vacancies in Northern Ireland</PageTitle>
+
+<!-- Modern Page Header -->
+<div class="mb-8">
+    <MudText Typo="Typo.h4" Style="font-weight: 800; color: #0f172a; letter-spacing: -0.025em;" Class="mb-1">
+        Healthcare Vacancies in Northern Ireland
+    </MudText>
+    <MudText Typo="Typo.body1" Style="color: #64748b;">
+        Live listings aggregated from multiple job boards into one searchable dashboard.
+    </MudText>
+</div>
+
+<!-- Modern Filter Card -->
+<MudPaper Elevation="0" Class="pa-6 rounded-xl mb-8" Style="background: #ffffff; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);">
+    <MudGrid Spacing="3" AlignItems="Center">
+        <MudItem xs="12" md="4">
+            <MudTextField @bind-Value="_search" Label="Search title, employer or keywords"
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                          Immediate="true" OnKeyUp="@(e => { if (e.Key == "Enter") _ = ApplyFiltersAsync(); })"
+                          Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Style="background-color: #f8fafc;" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudSelect T="string" @bind-Value="_location" Label="Location" Clearable="true"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" Style="background-color: #f8fafc;">
+                @foreach (var location in _filterOptions.Locations)
+                {
+                    <MudSelectItem T="string" Value="@location">@location</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="6" sm="3" md="2">
+            <MudNumericField T="decimal?" @bind-Value="_minSalary" Label="Min salary (£)" Min="0"
+                             Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true"
+                             Style="background-color: #f8fafc;" />
+        </MudItem>
+        <MudItem xs="6" sm="3" md="2">
+            <MudSelect T="string" @bind-Value="_sort" Label="Sort by" Variant="Variant.Outlined" Margin="Margin.Dense" Style="background-color: #f8fafc;">
+                <MudSelectItem T="string" Value="@("newest")">Newest first</MudSelectItem>
+                <MudSelectItem T="string" Value="@("salary")">Highest salary</MudSelectItem>
+                <MudSelectItem T="string" Value="@("title")">Title (A–Z)</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" md="1">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                       OnClick="@ApplyFiltersAsync" StartIcon="@Icons.Material.Filled.FilterAlt"
+                       Class="py-2 rounded-lg" Style="background-color: #2563eb; text-transform: none; font-weight: 600;">
+                Apply
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4 rounded-lg">@_error</MudAlert>
+}
+
+@if (_loading)
+{
+    <MudGrid Spacing="4">
+        @for (var i = 0; i < 6; i++)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="220px" Class="rounded-xl" />
+            </MudItem>
+        }
+    </MudGrid>
+}
+else if (_result is not null)
+{
+    <MudText Typo="Typo.body2" Class="mb-4" Style="font-weight: 600; color: #475569;">
+        @_result.TotalCount vacanc@(_result.TotalCount == 1 ? "y" : "ies") found
+    </MudText>
+    
+    <MudGrid Spacing="4">
+        @foreach (var vacancy in _result.Items)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <VacancyCard Vacancy="vacancy" ShowBookmark="true"
+                             IsBookmarked="@_bookmarkedIds.Contains(vacancy.Id)"
+                             OnToggleBookmark="@ToggleBookmarkAsync" />
+            </MudItem>
+        }
+    </MudGrid>
+
+    @if (_result.TotalCount == 0)
+    {
+        <MudPaper Elevation="0" Class="pa-12 d-flex flex-column align-center rounded-xl" Style="background: #ffffff; border: 1px solid #e2e8f0;">
+            <MudIcon Icon="@Icons.Material.Filled.SearchOff" Size="Size.Large" Class="mb-3" Style="color: #94a3b8;" />
+            <MudText Typo="Typo.h6" Style="font-weight: 600; color: #1e293b;" Class="mb-1">No vacancies found</MudText>
+            <MudText Typo="Typo.body2" Style="color: #64748b;">No vacancies match your filters. Try broadening your search.</MudText>
+        </MudPaper>
+    }
+
+    @if (_result.TotalPages > 1)
+    {
+        <div class="d-flex justify-center mt-8">
+            <MudPagination Count="@_result.TotalPages" Selected="@_page" SelectedChanged="@OnPageChangedAsync" Color="Color.Primary" />
+        </div>
+    }
+}
+
+@code {
+    private string? _search;
+    private string? _location;
+    private decimal? _minSalary;
+    private string _sort = "newest";
+    private int _page = 1;
+
+    private bool _loading = true;
+    private string? _error;
+    private VacancySearchResponse? _result;
+    private VacancyFilterOptions _filterOptions = new();
+    private HashSet<int> _bookmarkedIds = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _bookmarkedIds = Auth.IsAuthenticated
+            ? await SavedJobs.GetSavedIdsAsync()
+            : await Bookmarks.GetBookmarkedIdsAsync();
+
+        try
+        {
+            _filterOptions = await Http.GetFromJsonAsync<VacancyFilterOptions>("api/vacancies/filters") ?? new();
+        }
+        catch
+        {
+            // Filter dropdowns are optional; the main search error is surfaced below.
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task ToggleBookmarkAsync(Vacancy vacancy)
+    {
+        bool nowBookmarked;
+        if (Auth.IsAuthenticated)
+        {
+            nowBookmarked = !_bookmarkedIds.Contains(vacancy.Id);
+            var ok = nowBookmarked ? await SavedJobs.SaveAsync(vacancy.Id) : await SavedJobs.RemoveAsync(vacancy.Id);
+            if (!ok)
+            {
+                return;
+            }
+        }
+        else
+        {
+            nowBookmarked = await Bookmarks.ToggleAsync(vacancy);
+        }
+
+        if (nowBookmarked)
+        {
+            _bookmarkedIds.Add(vacancy.Id);
+        }
+        else
+        {
+            _bookmarkedIds.Remove(vacancy.Id);
+        }
+    }
+
+    private async Task ApplyFiltersAsync()
+    {
+        _page = 1;
+        await LoadAsync();
+    }
+
+    private async Task OnPageChangedAsync(int page)
+    {
+        _page = page;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            var query = new List<string> { $"page={_page}", "pageSize=12", $"sort={_sort}" };
+            if (!string.IsNullOrWhiteSpace(_search)) query.Add($"search={Uri.EscapeDataString(_search)}");
+            if (!string.IsNullOrWhiteSpace(_location)) query.Add($"location={Uri.EscapeDataString(_location)}");
+            if (_minSalary is not null) query.Add($"minSalary={_minSalary}");
+
+            _result = await Http.GetFromJsonAsync<VacancySearchResponse>($"api/vacancies?{string.Join("&", query)}");
+        }
+        catch (Exception)
+        {
+            _error = "Could not reach the vacancy service. Please check the API is running and try again.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

@@ -1,0 +1,198 @@
+
+@attribute [Authorize]
+@page "/apply/{VacancyId:int}"
+@using HealthcareRecruitment.Client.Services
+@using HealthcareRecruitment.Core.Models
+@inject HttpClient Http
+@inject ApplicationsService Applications
+@inject AuthService Auth
+
+<PageTitle>Apply - Healthcare Vacancies in Northern Ireland</PageTitle>
+
+<div class="mb-8">
+    <MudText Typo="Typo.h4" Style="font-weight: 800; color: #0f172a; letter-spacing: -0.025em;" Class="mb-1">
+        Job Application Portal
+    </MudText>
+    <MudText Typo="Typo.body1" Style="color: #64748b;">
+        Submit your application or save a draft to review later.
+    </MudText>
+</div>
+
+@if (!Auth.IsAuthenticated)
+{
+    <MudPaper Elevation="0" Class="pa-12 d-flex flex-column align-center rounded-xl" Style="background: #ffffff; border: 1px solid #e2e8f0;">
+        <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Large" Class="mb-3" Style="color: #2563eb;" />
+        <MudText Typo="Typo.h6" Style="font-weight: 700; color: #0f172a;" Class="mb-1">Log in to apply</MudText>
+        <MudText Typo="Typo.body2" Style="color: #64748b;" Class="mb-6 text-center">Applications are saved to your account so you can leave and come back to finish them.</MudText>
+        <div class="d-flex gap-3">
+            <MudButton Href="@($"login?returnUrl=/apply/{VacancyId}")" Variant="Variant.Filled" Color="Color.Primary" Class="px-6 rounded-lg" Style="background-color: #2563eb; text-transform: none; font-weight: 600;">Log in</MudButton>
+        </div>
+    </MudPaper>
+}
+else if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="rounded" />
+}
+else if (_vacancy is null)
+{
+    <MudAlert Severity="Severity.Error" Class="rounded-xl">Vacancy not found.</MudAlert>
+}
+else
+{
+    <MudPaper Elevation="0" Class="pa-6 pa-md-8 rounded-xl" Style="background: #ffffff; border: 1px solid #e2e8f0;">
+        <MudText Typo="Typo.h5" Style="font-weight: 700; color: #0f172a;" Class="mb-1">@_vacancy.Title</MudText>
+        <MudText Typo="Typo.subtitle1" Style="color: #2563eb; font-weight: 600;" Class="mb-4">@_vacancy.Employer — @_vacancy.Location</MudText>
+
+        <div class="d-flex flex-wrap gap-2 mb-6">
+            <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">@SalaryText</MudChip>
+            <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined">@_vacancy.Source</MudChip>
+            @if (_vacancy.PostedDate is not null)
+            {
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">Posted @_vacancy.PostedDate.Value.ToString("d MMM yyyy")</MudChip>
+            }
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_vacancy.Description))
+        {
+            <MudExpansionPanels Elevation="0" Class="mb-6 rounded-xl" Style="border: 1px solid #e2e8f0; background-color: #f8fafc;">
+                <MudExpansionPanel Text="Full job description" Expanded="true" Style="font-weight: 600; color: #1e293b;">
+                    <MudText Typo="Typo.body2" Style="white-space: pre-line; color: #475569; line-height: 1.6;">@_vacancy.Description</MudText>
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+        }
+
+        @if (_application?.Status == ApplicationStatus.Submitted)
+        {
+            <MudAlert Severity="Severity.Success" Class="mb-4 rounded-xl">
+                Submitted on @_application.SubmittedAt?.ToLocalTime().ToString("d MMM yyyy, HH:mm").
+                This application is locked and can no longer be edited.
+            </MudAlert>
+        }
+        else
+        {
+            @if (_saveError is not null)
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-4 rounded-xl">@_saveError</MudAlert>
+            }
+            
+            <div class="mb-4">
+                <MudTextField T="string" @bind-Value="_coverLetter" Label="Cover letter / personal statement"
+                              Variant="Variant.Outlined" Lines="8" Class="mb-4" Style="background-color: #f8fafc;" />
+                <MudTextField T="string" @bind-Value="_phone" Label="Contact phone" Variant="Variant.Outlined" Class="mb-6" Style="background-color: #f8fafc;" />
+            </div>
+
+            <div class="d-flex gap-3">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Class="px-6 rounded-lg"
+                           Disabled="@_saving" OnClick="@SaveDraftAsync" Style="text-transform: none; font-weight: 600;">
+                    @(_saving ? "Saving..." : "Save draft")
+                </MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="px-6 rounded-lg"
+                           Disabled="@_saving" OnClick="@SubmitAsync" Style="background-color: #2563eb; text-transform: none; font-weight: 600;">
+                    Submit application
+                </MudButton>
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(_vacancy.Url))
+        {
+            <MudText Typo="Typo.body2" Class="mt-8 pt-4" Style="color: #64748b; border-top: 1px solid #e2e8f0;">
+                This records your application inside this system. The original posting is also available
+                <MudLink Href="@_vacancy.Url" Target="_blank" Style="font-weight: 600; color: #2563eb;">here</MudLink> if you'd like to apply with the employer directly.
+            </MudText>
+        }
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public int VacancyId { get; set; }
+
+    private Vacancy? _vacancy;
+    private ApplicationResponse? _application;
+    private string? _coverLetter;
+    private string? _phone;
+    private bool _loading = true;
+    private bool _saving;
+    private string? _saveError;
+
+    private string SalaryText => _vacancy switch
+    {
+        { SalaryMin: null, SalaryMax: null } => "Salary not stated",
+        { SalaryMin: { } min, SalaryMax: null } => $"From £{min:N0}",
+        { SalaryMin: null, SalaryMax: { } max } => $"Up to £{max:N0}",
+        { SalaryMin: { } min, SalaryMax: { } max } when min == max => $"£{min:N0}",
+        { SalaryMin: { } min, SalaryMax: { } max } => $"£{min:N0} – £{max:N0}",
+        _ => "Salary not stated",
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Auth.IsAuthenticated)
+        {
+            _loading = false;
+            return;
+        }
+
+        try
+        {
+            _vacancy = await Http.GetFromJsonAsync<Vacancy>($"api/vacancies/{VacancyId}");
+            _application = await Applications.GetByVacancyAsync(VacancyId);
+            _coverLetter = _application?.CoverLetter;
+            _phone = _application?.Phone;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SaveDraftAsync()
+    {
+        _saving = true;
+        _saveError = null;
+        try
+        {
+            var (success, error, result) = await Applications.SaveDraftAsync(VacancyId, _coverLetter, _phone);
+            if (success)
+            {
+                _application = result;
+            }
+            else
+            {
+                _saveError = error;
+            }
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        _saving = true;
+        _saveError = null;
+        try
+        {
+            var (draftOk, draftError, _) = await Applications.SaveDraftAsync(VacancyId, _coverLetter, _phone);
+            if (!draftOk)
+            {
+                _saveError = draftError;
+                return;
+            }
+
+            var (success, error, result) = await Applications.SubmitAsync(VacancyId);
+            if (success)
+            {
+                _application = result;
+            }
+            else
+            {
+                _saveError = error;
+            }
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

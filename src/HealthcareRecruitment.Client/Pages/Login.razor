@@ -1,0 +1,174 @@
+@page "/login"
+@layout EmptyLayout
+@using HealthcareRecruitment.Client.Services
+@inject AuthService Auth
+@inject NavigationManager Nav
+
+<PageTitle>Portal Access - Healthcare Job Match Aggregator</PageTitle>
+
+<MudGrid Class="ma-0 pa-0" Style="min-height: 100vh; width: 100%; overflow: hidden;">
+    
+    <!-- Left Hero & Project Description Section -->
+    <MudItem xs="12" md="6" Class="d-flex align-center justify-center pa-8" Style="background: linear-gradient(145deg, #eef5ff 0%, #dbeafe 100%);">
+        <MudPaper Elevation="0" Class="pa-10 rounded-xl" Style="background: #ffffff; max-width: 520px; box-shadow: 0 15px 35px rgba(37, 99, 235, 0.08); border: 1px solid rgba(255, 255, 255, 0.7); background-color: transparent;">
+            
+            <MudChip T="string" Color="Color.Primary" Variant="Variant.Outlined" Size="Size.Small" Class="mb-4" Style="background-color: #eff6ff; border-color: #bfdbfe; font-weight: 700;">
+                <MudIcon Icon="@Icons.Material.Filled.LocalHospital" Size="Size.Small" Class="mr-1" />
+                Northern Ireland Healthcare
+            </MudChip>
+
+            <MudText Typo="Typo.h3" Style="font-weight: 800; color: #0f172a; line-height: 1.2;" Class="mb-4">
+                Career & <span style="color: #2563eb;">hiring Intelligence</span>
+            </MudText>
+            
+            <MudText Typo="Typo.body1" Style="color: #475569; line-height: 1.6;" Class="mb-6">
+                Accelerate recruitment, candidate matching, and clinical career progression with multi-source vacancy aggregation and AI-driven skills intelligence.
+            </MudText>
+
+            <MudList T="string" DisablePadding="true" Class="custom-bullet-list">
+                <MudListItem Icon="@Icons.Material.Filled.CheckCircle" IconColor="Color.Primary">
+                    Multi-source vacancy aggregation across Adzuna and Jooble
+                </MudListItem>
+                <MudListItem Icon="@Icons.Material.Filled.CheckCircle" IconColor="Color.Primary">
+                    Local GPU vector embeddings & cosine similarity matching
+                </MudListItem>
+                <MudListItem Icon="@Icons.Material.Filled.CheckCircle" IconColor="Color.Primary">
+                    Automated resume parsing and candidate intake profiling
+                </MudListItem>
+                <MudListItem Icon="@Icons.Material.Filled.CheckCircle" IconColor="Color.Primary">
+                    Interactive AI Career Assistant for interview prep and role guidance
+                </MudListItem>
+            </MudList>
+            
+        </MudPaper>
+    </MudItem>
+
+    <!-- Right Portal Login / Sign-Up Section -->
+    <MudItem xs="12" md="6" Class="d-flex align-center justify-center pa-8" Style="background-color: #ffffff;">
+        <MudPaper Elevation="0" Style="width: 100%; max-width: 440px; border: 1px solid #e2e8f0;" Class="pa-8 rounded-lg">
+            
+            <MudText Typo="Typo.h5" Style="font-weight: 700; color: #0f172a;" Class="mb-1">Welcome</MudText>
+            <MudText Typo="Typo.body2" Class="mb-6 mud-text-secondary">
+                Use your credentials to access the recruitment portal.
+            </MudText>
+
+            @if (Auth.LastError is not null)
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-4 rounded-lg">@Auth.LastError</MudAlert>
+            }
+
+            <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pt-6" SliderColor="Color.Primary">
+                
+                <!-- SIGN IN TAB -->
+                <MudTabPanel Text="Sign in">
+                    <MudTextField T="string" @bind-Value="_email" Label="Email Address" Variant="Variant.Outlined"
+                                  Class="mb-4" InputType="InputType.Email" Margin="Margin.Dense" />
+                    
+                    <MudTextField T="string" @bind-Value="_password" Label="Password" Variant="Variant.Outlined"
+                                  Class="mb-2" InputType="InputType.Password" Margin="Margin.Dense" />
+                    
+                    <div class="d-flex justify-space-between align-center mb-6 mt-1">
+                        <MudCheckBox T="bool" Label="Remember me" Color="Color.Primary" Size="Size.Small" Dense="true" />
+                        <MudLink Href="forgot-password" Typo="Typo.caption" Color="Color.Primary">Forgot password?</MudLink>
+                    </div>
+
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" Class="py-3 rounded-lg"
+                               Disabled="@_submitting" OnClick="@SubmitAsync" Style="background-color: #2563eb; font-weight: 700;">
+                        @(_submitting ? "Signing in..." : "Sign In")
+                    </MudButton>
+                </MudTabPanel>
+
+                <!-- SIGN UP TAB -->
+                <MudTabPanel Text="Create account">
+                    <MudTextField T="string" @bind-Value="_regName" Label="Full Name" Variant="Variant.Outlined"
+                                  Class="mb-4" InputType="InputType.Text" Margin="Margin.Dense" />
+                    
+                    <MudTextField T="string" @bind-Value="_regEmail" Label="Email Address" Variant="Variant.Outlined"
+                                  Class="mb-4" InputType="InputType.Email" Margin="Margin.Dense" />
+                    
+                    <MudTextField T="string" @bind-Value="_regPassword" Label="Create Password" Variant="Variant.Outlined"
+                                  Class="mb-6" InputType="InputType.Password" Margin="Margin.Dense" />
+
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" Class="py-3 rounded-lg"
+                               Disabled="@_regSubmitting" OnClick="@RegisterAsync" Style="background-color: #2563eb; font-weight: 700;">
+                        @(_regSubmitting ? "Creating account..." : "Create Account")
+                    </MudButton>
+                </MudTabPanel>
+                
+            </MudTabs>
+
+            <MudText Typo="Typo.caption" Class="d-block mt-6 text-center mud-text-secondary">
+                By continuing, you agree to our <MudLink Href="#" Color="Color.Primary">Terms</MudLink> and <MudLink Href="#" Color="Color.Primary">Privacy Policy</MudLink>.
+            </MudText>
+
+        </MudPaper>
+    </MudItem>
+
+</MudGrid>
+
+<style>
+    .custom-bullet-list .mud-list-item {
+        padding-left: 0;
+        margin-bottom: 8px;
+    }
+    .custom-bullet-list .mud-list-item-icon {
+        margin-right: 12px;
+        min-width: unset;
+    }
+    .custom-bullet-list .mud-typography {
+        color: #334155;
+        font-weight: 500;
+        font-size: 0.95rem;
+    }
+</style>
+
+@code {
+    [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
+
+    // Login state
+    private string _email = "";
+    private string _password = "";
+    private bool _submitting;
+
+    // Registration state
+    private string _regName = "";
+    private string _regEmail = "";
+    private string _regPassword = "";
+    private bool _regSubmitting;
+
+    private async Task SubmitAsync()
+    {
+        _submitting = true;
+        try
+        {
+            if (await Auth.LoginAsync(_email, _password))
+            {
+                Nav.NavigateTo(string.IsNullOrWhiteSpace(ReturnUrl) ? "" : ReturnUrl);
+            }
+            else if (Auth.UnverifiedEmail is { } unverifiedEmail)
+            {
+                Nav.NavigateTo($"verify-email?email={Uri.EscapeDataString(unverifiedEmail)}");
+            }
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    private async Task RegisterAsync()
+    {
+        _regSubmitting = true;
+        try
+        {
+            if (await Auth.RegisterAsync(_regEmail, _regName, _regPassword))
+            {
+                Nav.NavigateTo($"verify-email?email={Uri.EscapeDataString(_regEmail)}");
+            }
+        }
+        finally
+        {
+            _regSubmitting = false;
+        }
+    }
+}

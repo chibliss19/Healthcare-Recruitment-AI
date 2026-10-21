@@ -1,0 +1,14 @@
+@inherits LayoutComponentBase
+
+@* 
+  We must include these MudBlazor providers even in a blank layout, 
+  otherwise your MudBlazor colors, popups, and alerts won't work on the login page! 
+*@
+<MudThemeProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<!-- @Body is where your Login.razor content gets injected -->
+<MudMainContent>
+    @Body
+</MudMainContent>

@@ -1,0 +1,80 @@
+@attribute [Authorize]
+@page "/applications"
+@using HealthcareRecruitment.Client.Services
+@using HealthcareRecruitment.Core.Models
+@inject ApplicationsService Applications
+@inject AuthService Auth
+
+<PageTitle>My Applications - Healthcare Vacancies in Northern Ireland</PageTitle>
+
+<div class="mb-8">
+    <MudText Typo="Typo.h4" Style="font-weight: 800; color: #0f172a; letter-spacing: -0.025em;" Class="mb-1">
+        My Applications
+    </MudText>
+    <MudText Typo="Typo.body1" Style="color: #64748b;">
+        Track your submitted and saved job applications across Northern Ireland.
+    </MudText>
+</div>
+
+@if (!Auth.IsAuthenticated)
+{
+    <MudAlert Severity="Severity.Info" Class="rounded-xl">
+        <MudLink Href="login" Style="font-weight: 600; color: #2563eb;">Log in</MudLink> to see applications you've started or submitted.
+    </MudAlert>
+}
+else if (_applications is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="rounded" />
+}
+else if (_applications.Count == 0)
+{
+    <MudPaper Elevation="0" Class="pa-12 d-flex flex-column align-center rounded-xl" Style="background: #ffffff; border: 1px solid #e2e8f0;">
+        <MudIcon Icon="@Icons.Material.Outlined.Assignment" Size="Size.Large" Class="mb-3" Style="color: #94a3b8;" />
+        <MudText Typo="Typo.h6" Style="font-weight: 700; color: #0f172a;" Class="mb-1">No applications yet</MudText>
+        <MudText Typo="Typo.body2" Style="color: #64748b;" Class="mb-6">Hit "Apply" on any vacancy in the dashboard to start one.</MudText>
+        <MudButton Href="" Variant="Variant.Filled" Color="Color.Primary" Class="px-6 rounded-lg" Style="background-color: #2563eb; text-transform: none; font-weight: 600;">Browse vacancies</MudButton>
+    </MudPaper>
+}
+else
+{
+    <MudPaper Elevation="0" Class="rounded-xl overflow-hidden" Style="border: 1px solid #e2e8f0; background: #ffffff;">
+        <MudTable Items="_applications" Hover="true" Breakpoint="Breakpoint.Sm" Elevation="0">
+            <HeaderContent>
+                <MudTh Style="font-weight: 700; color: #475569;">Vacancy</MudTh>
+                <MudTh Style="font-weight: 700; color: #475569;">Employer</MudTh>
+                <MudTh Style="font-weight: 700; color: #475569;">Status</MudTh>
+                <MudTh Style="font-weight: 700; color: #475569;">Last updated</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Vacancy" Style="font-weight: 600; color: #1e293b;">@context.Vacancy.Title</MudTd>
+                <MudTd DataLabel="Employer" Style="color: #475569;">@context.Vacancy.Employer</MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Size="Size.Small"
+                             Color="@(context.Status == ApplicationStatus.Submitted ? Color.Success : Color.Warning)"
+                             Variant="Variant.Outlined">
+                        @context.Status
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Last updated" Style="color: #64748b;">@context.UpdatedAt.ToLocalTime().ToString("d MMM yyyy")</MudTd>
+                <MudTd>
+                    <MudButton Href="@($"apply/{context.VacancyId}")" Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" Style="font-weight: 600; text-transform: none;">
+                        @(context.Status == ApplicationStatus.Submitted ? "View" : "Continue")
+                    </MudButton>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private List<ApplicationResponse>? _applications;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Auth.IsAuthenticated)
+        {
+            _applications = await Applications.GetAllAsync();
+        }
+    }
+}

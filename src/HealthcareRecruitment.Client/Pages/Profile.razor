@@ -1,0 +1,64 @@
+@page "/profile"
+@attribute [Authorize]
+@using HealthcareRecruitment.Client.Services
+@using MudBlazor
+@inject NavigationManager Nav
+@inject AuthService Auth
+@inject IJSRuntime JS
+
+<PageTitle>My Profile - Healthcare Vacancies in Northern Ireland</PageTitle>
+
+<div class="mb-8">
+    <MudText Typo="Typo.h4" Style="font-weight: 800; color: #0f172a; letter-spacing: -0.025em;" Class="mb-1">
+        My Profile
+    </MudText>
+    <MudText Typo="Typo.body1" Style="color: #64748b;">
+        Manage your account settings, security preferences, and data.
+    </MudText>
+</div>
+
+<MudGrid Spacing="4">
+    @* Personal Info Section *@
+    <MudItem xs="12">
+        <MudPaper Elevation="0" Class="pa-6 rounded-xl" Style="background: #ffffff; border: 1px solid #e2e8f0;">
+            <MudText Typo="Typo.h6" Style="font-weight: 700; color: #0f172a;" Class="mb-4">Personal Details</MudText>
+            <MudTextField Label="Full Name" Value="@Auth.FullName" ReadOnly="true" Variant="Variant.Outlined" Class="mb-4" Style="background-color: #f8fafc;" />
+            <MudTextField Label="Email Address" Value="@Auth.Email" ReadOnly="true" Variant="Variant.Outlined" Style="background-color: #f8fafc;" />
+        </MudPaper>
+    </MudItem>
+
+    @* Danger Zone Section *@
+    <MudItem xs="12">
+        <MudPaper Elevation="0" Class="pa-6 rounded-xl" Style="background: #ffffff; border: 1px solid #fecaca;">
+            <MudText Typo="Typo.h6" Color="Color.Error" Style="font-weight: 700;" Class="mb-1">Danger Zone</MudText>
+            <MudText Typo="Typo.body2" Style="color: #64748b;" Class="mb-4">
+                Permanently delete your account, saved jobs, and AI sessions. This cannot be undone.
+            </MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="HandleDeleteAccount" Class="rounded-lg px-6" Style="text-transform: none; font-weight: 600;">
+                Delete My Account
+            </MudButton>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private async Task HandleDeleteAccount()
+    {
+        bool confirmed = await JS.InvokeAsync<bool>("confirm", "Are you absolutely sure you want to delete your account? This cannot be undone.");
+        
+        if (confirmed)
+        {
+            var success = await Auth.DeleteAccountAsync();
+            
+            if (success)
+            {
+                await Auth.LogoutAsync(); 
+                Nav.NavigateTo("login", forceLoad: true);
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", "Failed to delete account. Please try again.");
+            }
+        }
+    }
+}

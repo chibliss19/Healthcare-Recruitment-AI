@@ -1,0 +1,82 @@
+@attribute [Authorize]
+@page "/bookmarks"
+@using HealthcareRecruitment.Client.Components
+@using HealthcareRecruitment.Client.Services
+@using HealthcareRecruitment.Core.Models
+@inject BookmarkService BookmarkStore
+@inject SavedJobsService SavedJobs
+@inject AuthService Auth
+
+<PageTitle>Bookmarks - Healthcare Vacancies in Northern Ireland</PageTitle>
+
+<div class="mb-8">
+    <MudText Typo="Typo.h4" Style="font-weight: 800; color: #0f172a; letter-spacing: -0.025em;" Class="mb-1">
+        Bookmarked Vacancies
+    </MudText>
+    <MudText Typo="Typo.body1" Style="color: #64748b;">
+        @if (Auth.IsAuthenticated)
+        {
+            <text>Saved to your account — available wherever you log in.</text>
+        }
+        else
+        {
+            <text>Saved in your browser only — <MudLink Href="login" Style="font-weight: 600; color: #2563eb;">log in</MudLink> to sync these to your account instead.</text>
+        }
+    </MudText>
+</div>
+
+@if (_bookmarks is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="rounded" />
+}
+else if (_bookmarks.Count == 0)
+{
+    <MudPaper Elevation="0" Class="pa-12 d-flex flex-column align-center rounded-xl" Style="background: #ffffff; border: 1px solid #e2e8f0;">
+        <MudIcon Icon="@Icons.Material.Outlined.BookmarkBorder" Size="Size.Large" Class="mb-3" Style="color: #94a3b8;" />
+        <MudText Typo="Typo.h6" Style="font-weight: 700; color: #0f172a;" Class="mb-1">No bookmarks yet</MudText>
+        <MudText Typo="Typo.body2" Style="color: #64748b;" Class="mb-6">Use the bookmark icon on any vacancy in the dashboard to save it here.</MudText>
+        <MudButton Href="" Variant="Variant.Filled" Color="Color.Primary" Class="px-6 rounded-lg" Style="background-color: #2563eb; text-transform: none; font-weight: 600;">Browse vacancies</MudButton>
+    </MudPaper>
+}
+else
+{
+    <MudGrid Spacing="4">
+        @foreach (var vacancy in _bookmarks)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <VacancyCard Vacancy="vacancy" ShowBookmark="true" IsBookmarked="true"
+                             OnToggleBookmark="@RemoveAsync" />
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    private List<Vacancy>? _bookmarks;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _bookmarks = Auth.IsAuthenticated
+            ? (await SavedJobs.GetAllAsync()).Select(s => s.Vacancy).ToList()
+            : await BookmarkStore.GetAllAsync();
+    }
+
+    private async Task RemoveAsync(Vacancy vacancy)
+    {
+        if (Auth.IsAuthenticated)
+        {
+            await SavedJobs.RemoveAsync(vacancy.Id);
+        }
+        else
+        {
+            await BookmarkStore.ToggleAsync(vacancy);
+        }
+
+        await LoadAsync();
+    }
+}

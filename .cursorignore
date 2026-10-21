@@ -1,0 +1,22 @@
+# Build output
+**/bin/
+**/obj/
+**/out/
+**/TestResults/
+**/coverage/
+*.user
+*.suo
+
+# IDE / tooling
+.vs/
+.idea/
+
+# Secrets and local env
+.env
+.env.*
+*.pfx
+appsettings.*.local.json
+
+# Logs and dumps
+*.log
+*.dump
